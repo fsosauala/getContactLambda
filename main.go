@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
+	"net/http"
 	"os"
 
+	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -29,22 +32,31 @@ type (
 	}
 )
 
-func HandleLambdaEvent(ctx context.Context, getContactRequest ContactRequest) (User, error) {
+func HandleLambdaEvent(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	id := req.PathParameters["id"]
 	cfg, err := config.LoadDefaultConfig(ctx, func(opts *config.LoadOptions) error {
 		opts.Region = os.Getenv("AWS_REGION")
 		return nil
 	})
 	if err != nil {
 		log.Printf("error loading dynamo configuration: %v", err)
-		return User{}, err
+		return events.APIGatewayProxyResponse{}, err
 	}
 	svc := dynamodb.NewFromConfig(cfg)
-	userRetrieved, err := retrieveContact(ctx, svc, getContactRequest.ID)
+	userRetrieved, err := retrieveContact(ctx, svc, id)
 	if err != nil {
 		log.Printf("error getting user information: %v", err)
-		return User{}, err
+		return events.APIGatewayProxyResponse{}, err
 	}
-	return userRetrieved, nil
+	data, err := json.Marshal(userRetrieved)
+	if err != nil {
+		return events.APIGatewayProxyResponse{}, err
+	}
+	return events.APIGatewayProxyResponse{
+		StatusCode:      http.StatusOK,
+		Body:            string(data),
+		IsBase64Encoded: false,
+	}, nil
 }
 
 func main() {
